@@ -1,49 +1,94 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom"; // ✅ useNavigate
-import axios from "../utils/axios";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import axios from "axios";
 
-const Login = () => {
-  const navigate = useNavigate(); // ✅ instead of useRouter
+export default function Login() {
+  const [params] = useSearchParams();
+  const roleFromURL = params.get("role") || "rider";
+
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("rider");
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await axios.post("/api/auth/login", { phone, password });
-      const user = res.data.user;
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-      localStorage.setItem("user", JSON.stringify({ ...user, role }));
+  const submitLogin = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-      if (role === "rider") navigate("/rider");
-      else if (role === "driver") navigate("/driver");
-    } catch (err) {
-      console.error("Login error:", err.response?.data || err.message);
+  try {
+    const res = await axios.post("http://localhost:5000/api/auth/login", {
+      phone,
+      password,
+      role: roleFromURL
+    });
+
+    const user = res.data.user;
+    const token = res.data.token;
+
+    // Save token
+    localStorage.setItem("token", token);
+
+    // Save the logged-in user
+    localStorage.setItem("user", JSON.stringify(user));
+
+    if (user.role === "driver") {
+      // Save driver separately (same object)
+      localStorage.setItem("driver", JSON.stringify(user));
+      navigate("/driver");
+    } else {
+      localStorage.setItem("rider", JSON.stringify(user));
+      navigate("/rider");
     }
-  };
 
-  return (
-    <form onSubmit={handleLogin}>
-      <input
-        type="text"
-        placeholder="Phone"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <select value={role} onChange={(e) => setRole(e.target.value)}>
-        <option value="rider">Rider</option>
-        <option value="driver">Driver</option>
-      </select>
-      <button type="submit">Login</button>
-    </form>
-  );
+  } catch (err) {
+    alert(err.response?.data?.message || "Login failed");
+  } finally {
+    setLoading(false);
+  }
 };
 
-export default Login;
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-yellow-400 p-6">
+      <div className="bg-white rounded-xl p-8 w-full max-w-md shadow-lg">
+
+        <h2 className="text-2xl font-bold mb-4 text-center">
+          {roleFromURL === "driver" ? "Driver Login" : "Rider Login"}
+        </h2>
+
+        <form onSubmit={submitLogin} className="flex flex-col gap-4">
+          <input
+            type="text"
+            placeholder="Phone Number"
+            className="p-3 border rounded-lg"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+
+          <input
+            type="password"
+            placeholder="Password"
+            className="p-3 border rounded-lg"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <button
+            type="submit"
+            className="bg-black text-white py-3 rounded-lg font-semibold"
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+
+        <p className="text-center mt-4">
+          Don't have an account?{" "}
+          <a href="/register" className="text-blue-500 underline">
+            Register
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}

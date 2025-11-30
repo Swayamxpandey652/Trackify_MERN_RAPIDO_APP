@@ -4,17 +4,33 @@ import {
   toggleAvailability,
   getNearbyDrivers,
 } from "../controllers/driverController.js";
-import {protect} from "../middleware/authMiddleware.js";
+
+import {
+  driverRespondRide
+} from "../controllers/rideController.js";  // (new)
+
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Driver updates their location
+// ----------------------------
+// Driver updates live location
+// ----------------------------
 router.post("/update-location", protect, updateLocation);
 
+// ----------------------------
 // Driver goes online/offline
+// ----------------------------
 router.post("/toggle-availability", protect, toggleAvailability);
 
-// Rider fetches nearby drivers
+// ----------------------------
+// Rider requests nearby drivers
+// ----------------------------
 router.get("/nearby", getNearbyDrivers);
+
+// ----------------------------
+// Driver responds to a ride request (ACCEPT / REJECT)
+// ----------------------------
+router.post("/respond", protect, driverRespondRide);
 
 export default router;

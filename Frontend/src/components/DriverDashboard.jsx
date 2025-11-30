@@ -1,25 +1,42 @@
-// src/components/DriverDashboard.jsx
 "use client";
 import { useSocket } from "../context/SocketContext";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useAuth } from "../context/AuthContext";   // ⭐ ADDED
+import { useAuth } from "../context/AuthContext";
 
 const DriverDashboard = () => {
-  const socket = useSocket();
-  const { user } = useAuth();        // ⭐ ADDED 
-  const driverId = user?._id;        // ⭐ ADDED
+  const { socket } = useSocket();
+  const { user } = useAuth();
+  const driverId = user?._id;
 
-  const [rides, setRides] = useState([]);
+  // ------------------ STATE ------------------
+  const [driver, setDriver] = useState(null);
+  const [driverLat, setDriverLat] = useState(null);
+  const [driverLng, setDriverLng] = useState(null);
   const [availableRides, setAvailableRides] = useState([]);
   const [currentRideId, setCurrentRideId] = useState(null);
 
-  // JOIN DRIVER ROOM
+  // ------------------ GET DRIVER FROM LOCAL STORAGE ------------------
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("driver");
+
+      if (!raw || raw === "undefined" || raw === "null") return;
+
+      const parsed = JSON.parse(raw);
+      setDriver(parsed);
+    } catch (e) {
+      console.error("Invalid driver JSON → clearing localStorage", e);
+      localStorage.removeItem("driver");
+    }
+  }, []);
+
+  // ------------------ SOCKET JOIN ROOM ------------------
   useEffect(() => {
     if (!socket || !driverId) return;
 
-    socket.emit("join-driver", driverId);   // ⭐ UPDATED
-    socket.emit("join-driver-room");          // common room
+    socket.emit("join-driver", driverId);
+    socket.emit("join-driver-room");
 
     socket.on("new-ride-request", (ride) => {
       setAvailableRides((prev) => [...prev, ride]);
@@ -30,23 +47,24 @@ const DriverDashboard = () => {
     };
   }, [socket, driverId]);
 
-  // DriverDashboard.jsx
-useEffect(() => {
-  const fetchDriverData = async () => {
-    if (!driverId) return;
-    try {
-      const res = await axios.get(`/api/driver/${driverId}/rides`);
-      setAvailableRides(res.data.availableRides);
-      setCurrentRide(res.data.currentRide); // ongoing ride if any
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  fetchDriverData();
-}, [driverId]);
+  // ------------------ FETCH DRIVER RIDES ------------------
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!driverId) return;
 
+      try {
+        const res = await axios.get(`/api/driver/${driverId}/rides`);
+        setAvailableRides(res.data.availableRides || []);
+        setCurrentRideId(res.data.currentRide || null);
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
-  // REMOVE RIDE WHEN TAKEN BY ANOTHER DRIVER
+    fetchData();
+  }, [driverId]);
+
+  // ------------------ REMOVE RIDE WHEN TAKEN BY OTHERS ------------------
   useEffect(() => {
     if (!socket) return;
 
@@ -57,9 +75,40 @@ useEffect(() => {
     return () => socket.off("ride-removed");
   }, [socket]);
 
-  // UPDATE RIDE STATUS
+  // ------------------ AUTO DRIVER LOCATION UPDATES ------------------
+  const updateLocation = (lat, lng) => {
+    if (!socket || !driverId || !currentRideId) return;
+
+    socket.emit("driver-location-update", {
+      driverId,
+      rideId: currentRideId,
+      lat,
+      lng,
+    });
+  };
+
+  useEffect(() => {
+    if (!currentRideId) return;
+
+    const interval = setInterval(() => {
+      updateLocation(driverLat, driverLng);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [driverLat, driverLng, currentRideId]);
+
+  // ------------------ DRIVER ACCEPTS RIDE ------------------
+  const acceptRide = (rideId) => {
+    if (!socket || !driverId) return;
+
+    socket.emit("accept-ride", { rideId, driverId });
+    setCurrentRideId(rideId);
+    setAvailableRides((prev) => prev.filter((r) => r.rideId !== rideId));
+  };
+
+  // ------------------ UPDATE RIDE STATUS ------------------
   const updateStatus = async (status) => {
-    if (!currentRideId) return alert("No ride selected!");
+    if (!currentRideId) return;
 
     try {
       await axios.post("/api/ride/update-status", {
@@ -71,45 +120,23 @@ useEffect(() => {
     }
   };
 
-  // DRIVER ACCEPTS A RIDE
-  const acceptRide = (rideId) => {
-    if (!socket || !driverId) return;
-
-    socket.emit("accept-ride", { rideId, driverId });
-
-    setCurrentRideId(rideId);
-    setAvailableRides((prev) => prev.filter((r) => r.rideId !== rideId));
-  };
-
-  // Live location update function
-const updateLocation = (lat, lng) => {
-  if (!socket || !driverId || !currentRideId) return;
-
-  socket.emit("driver-location-update", {
-    driverId,
-    rideId: currentRideId, // send rideId so rider receives updates
-    lat,
-    lng
-  });
-};
-
-// Example: update every 5 seconds (assuming driverLat and driverLng are state variables)
-useEffect(() => {
-  if (!currentRideId) return; // only update location when a ride is active
-
-  const interval = setInterval(() => {
-    updateLocation(driverLat, driverLng); // driverLat/driverLng from GPS or map
-  }, 5000);
-
-  return () => clearInterval(interval);
-}, [driverLat, driverLng, currentRideId]);
-
+  // ------------------ SAFE RENDER ------------------
+  if (!driver) return <p>Loading driver data...</p>;
 
   return (
     <div>
       <h1>Driver Dashboard</h1>
 
-      <h3>Driver ID: {driverId}</h3> {/* Optional */}
+      <h3>Driver ID: {driverId}</h3>
+
+      <div>
+        <h1>Welcome, {driver.name}</h1>
+        <p>Phone: {driver.phone}</p>
+        <p>
+          Vehicle: {driver.vehicleType} - {driver.vehicleNumber}
+        </p>
+        <p>Availability: {driver.isAvailable ? "Online" : "Offline"}</p>
+      </div>
 
       <button onClick={() => updateLocation(26.9124, 75.7873)}>
         Update Location

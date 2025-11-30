@@ -1,20 +1,22 @@
 // src/components/RiderDashboard.jsx
 "use client";
+
+import React, { useEffect, useState } from "react";
 import { useSocket } from "../context/SocketContext.jsx";
-import { useAuth } from "../context/AuthContext.jsx";  // ⭐ NEW
-import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext.jsx";
+import { useNavigate } from "react-router-dom";
+import MyRides from "./MyRides.jsx";
+import Profile from "./Profile.jsx";
 
-const RiderDashboard = () => {
-  const socket = useSocket();
-  const { user } = useAuth();       // ⭐ NEW
-  const riderId = user?._id;        // ⭐ NEW (replace prop)
+export default function RiderDashboard() {
+  const { socket } = useSocket();
+  const { user } = useAuth();
+  const riderId = user?._id;
+  const navigate = useNavigate();
 
+  const [activeTab, setActiveTab] = useState("bookRide");
   const [driverLocations, setDriverLocations] = useState([]);
-  const [rideStatus, setRideStatus] = useState("");
 
-  // -------------------------------
-  // EXISTING Effect → Join rider room
-  // -------------------------------
   useEffect(() => {
     if (!socket || !riderId) return;
 
@@ -32,92 +34,67 @@ const RiderDashboard = () => {
     };
   }, [socket, riderId]);
 
-  // Example in useEffect in RiderDashboard.jsx
-useEffect(() => {
-  const fetchRiderData = async () => {
-    if (!riderId) return;
-    try {
-      const res = await axios.get(`/api/rider/${riderId}/rides`);
-      setRides(res.data.rides); // existing rides for the rider
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  fetchRiderData();
-}, [riderId]);
-
-
-  // -------------------------------
-  // EXISTING Effect → Ride accepted
-  // -------------------------------
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on("ride-accepted", ({ rideId, driverId }) => {
-      console.log("Your ride was accepted by driver:", driverId);
-    });
-
-    return () => socket.off("ride-accepted");
-  }, [socket]);
-
-  // --------------------------------------------------------
-  // ⭐ NEW EFFECT (Step 7) → Real-Time Driver Location + Status
-  // --------------------------------------------------------
-  useEffect(() => {
-    if (!socket) return;
-
-    socket.on("driver-live-location", ({ driverId, lat, lng }) => {
-      console.log("Live driver movement:", driverId, lat, lng);
-
-      setDriverLocations((prev) => {
-        const others = prev.filter((d) => d.driverId !== driverId);
-        return [...others, { driverId, lat, lng }];
-      });
-    });
-
-    socket.on("ride-status-updated", ({ rideId, status }) => {
-      console.log("Ride status changed:", status);
-      setRideStatus(status);
-    });
-
-    return () => {
-      socket.off("driver-live-location");
-      socket.off("ride-status-updated");
-    };
-  }, [socket]);
-
-  // -------------------------------
-  // Request Ride (as before)
-  // -------------------------------
-  const requestRide = async (pickup) => {
-    const rideId = await axios.post("/api/ride/request", {
-    riderId: user._id,
-    pickup,
-  });
-    socket.emit("ride-request", { rideId, riderId, pickup });
+  // navigate to /rider/map when Book Ride is clicked
+  const handleBookRideClick = () => {
+    navigate("/rider/map", { state: { driverLocations } });
   };
 
   return (
-    <div>
-      <h1>Rider Dashboard</h1>
+    <div className="h-screen w-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 bg-yellow-100">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Good Morning,</h2>
+          <h1 className="text-2xl font-bold text-yellow-600">
+            {user?.name || "Rider"}
+          </h1>
+        </div>
 
-      <h3>Rider ID: {riderId}</h3> {/* Optional: show logged-in rider */}
+        <img className="w-12 h-12 rounded-full border-2 border-yellow-400" />
+      </div>
 
-      <button onClick={() => requestRide({ lat: 26.9124, lng: 75.7873 })}>
-        Request Ride
-      </button>
+      {/* Tabs */}
+      <div className="flex justify-around bg-white shadow-md">
+        <button
+          className={`flex-1 p-3 font-semibold ${
+            activeTab === "bookRide"
+              ? "text-yellow-600 border-b-2 border-yellow-500"
+              : "text-gray-500"
+          }`}
+          onClick={handleBookRideClick}
+        >
+          Book Ride
+        </button>
 
-      <h3>Ride Status: {rideStatus}</h3>
+        <button
+          className={`flex-1 p-3 font-semibold ${
+            activeTab === "myRides"
+              ? "text-yellow-600 border-b-2 border-yellow-500"
+              : "text-gray-500"
+          }`}
+          onClick={() => setActiveTab("myRides")}
+        >
+          My Rides
+        </button>
 
-      <ul>
-        {driverLocations.map((d) => (
-          <li key={d.driverId}>
-            Driver {d.driverId}: ({d.lat}, {d.lng})
-          </li>
-        ))}
-      </ul>
+        <button
+          className={`flex-1 p-3 font-semibold ${
+            activeTab === "profile"
+              ? "text-yellow-600 border-b-2 border-yellow-500"
+              : "text-gray-500"
+          }`}
+          onClick={() => setActiveTab("profile")}
+        >
+          Profile
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-auto">
+        {activeTab === "myRides" && <MyRides />}
+        {activeTab === "profile" && <Profile />}
+        {/* NOTE: Book Ride is now handled via navigation */}
+      </div>
     </div>
   );
-};
-
-export default RiderDashboard;
+}
